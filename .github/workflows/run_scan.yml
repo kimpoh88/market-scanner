@@ -1,0 +1,24 @@
+name: Daily Pre-Market Scan
+on:
+  schedule:
+    # 8:30 AM EST is 1:30 PM UTC
+    - cron: '30 13 * * 1-5'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install yfinance pandas
+
+      - name: Run scanner
+        run: python scanner.py
