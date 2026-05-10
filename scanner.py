@@ -1,39 +1,50 @@
 import yfinance as yf
 import pandas as pd
+import pandas_ta as ta  # Technical Analysis library
 
-# Define your tickers (e.g., tech-heavy for pre-market action)
-TICKERS = ["AAPL", "TSLA", "NVDA", "AMD", "MSFT", "AMZN", "GOOGL", "META"] 
-VOLUME_THRESHOLD = 50000  # Minimum shares traded pre-market
-CHANGE_THRESHOLD = 1.5    # Minimum % change to trigger news fetch
+TICKERS = ["POET", "CRDO", "NVDA", "MRVL", "AMD", "TSLA"]
+VOL_THRESHOLD = 50000
+GAP_THRESHOLD = 3.0 # 3% Gap
 
-def scan_market():
-    print(f"Scanning {len(TICKERS)} tickers...")
-    
+def scan_for_trading():
     for symbol in TICKERS:
         ticker = yf.Ticker(symbol)
+        # Fetch 60 days of data for reliable Moving Averages
+        df = ticker.history(period="60d", interval="1d")
         
-        # Get the most recent 1-minute data for the pre-market session
-        data = ticker.history(period="1d", interval="1m", prepost=True)
+        if len(df) < 20: continue
+
+        # 1. Calculate Technical Indicators
+        df['SMA_20'] = ta.sma(df['Close'], length=20)
+        df['RSI'] = ta.rsi(df['Close'], length=14)
         
-        if data.empty:
-            continue
-
-        # Calculate metrics
-        latest_price = data['Close'].iloc[-1]
-        prev_close = ticker.info.get('previousClose', latest_price)
-        pct_change = ((latest_price - prev_close) / prev_close) * 100
-        current_volume = data['Volume'].sum() # Total pre-market volume so far
-
-        # Filter: Volume threshold and significant price move
-        if current_volume > VOLUME_THRESHOLD and abs(pct_change) > CHANGE_THRESHOLD:
-            print(f"\n🚀 {symbol} | Price: ${latest_price:.2f} | Change: {pct_change:.2f}% | Vol: {current_volume}")
+        # 2. Check Pre-market Data
+        # Get latest 1-min data (includes pre-market)
+        intraday = ticker.history(period="1d", interval="1m", prepost=True)
+        if intraday.empty: continue
+        
+        current_price = intraday['Close'].iloc[-1]
+        prev_close = df['Close'].iloc[-1]
+        current_vol = intraday['Volume'].sum()
+        gap_pct = ((current_price - prev_close) / prev_close) * 100
+        
+        # 3. Strategy Logic (The "Buy Signal")
+        is_above_sma = current_price > df['SMA_20'].iloc[-1]
+        is_not_overbought = df['RSI'].iloc[-1] < 70
+        
+        if gap_pct > GAP_THRESHOLD and current_vol > VOL_THRESHOLD:
+            print(f"\n🎯 SIGNAL FOUND: {symbol}")
+            print(f"Gap: {gap_pct:.2f}% | Vol: {current_vol} | RSI: {df['RSI'].iloc[-1]:.1f}")
             
-            # Fetch Related News
-            news = ticker.news[:3] # Get top 3 headlines
-            for item in news:
-                title = item.get('title') or item.get('content', {}).get('title')
-                link = item.get('link') or item.get('content', {}).get('pubDate') # Simplification for display
-                print(f"  - NEWS: {title}")
+            if is_above_sma and is_not_overbought:
+                print("✅ STATUS: Bullish Trend (Above 20-SMA) & Room to Run.")
+            else:
+                print("⚠️ WARNING: Stock is in a downtrend or currently overbought.")
+            
+            # Fetch News headlines
+            news = ticker.news[:2]
+            for n in news:
+                print(f"  - News: {n.get('title')}")
 
 if __name__ == "__main__":
-    scan_market()
+    scan_for_trading()
